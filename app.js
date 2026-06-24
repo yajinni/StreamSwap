@@ -669,6 +669,14 @@ function restoreOverlay() {
 
 // Global Event Listeners setup
 function setupEventListeners() {
+  // Main control bar home button trigger
+  const mainHomeBtn = document.getElementById('main-home-btn');
+  if (mainHomeBtn) {
+    mainHomeBtn.addEventListener('click', () => {
+      resetSetupWizard();
+    });
+  }
+
   // Sniffer postMessage listener
   window.addEventListener('message', handleSnifferMessages);
 
