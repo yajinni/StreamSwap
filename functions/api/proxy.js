@@ -74,6 +74,22 @@ export async function onRequestGet(context) {
 
     // Intercept iframe creations and source changes to load them through proxy
     try {
+      function resolveAndProxy(val) {
+        if (!val || typeof val !== 'string') return val;
+        if (val.startsWith('about:') || val.includes('/api/proxy')) return val;
+        
+        try {
+          const queryParams = new URLSearchParams(window.location.search);
+          const targetUrlStr = queryParams.get('url');
+          const baseUrl = targetUrlStr ? new URL(targetUrlStr) : new URL(window.location.href);
+          
+          const absoluteUrl = new URL(val, baseUrl.href).href;
+          return '/api/proxy?url=' + encodeURIComponent(absoluteUrl);
+        } catch(e) {
+          return val;
+        }
+      }
+
       const originalSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'src');
       if (originalSrcDescriptor) {
         Object.defineProperty(HTMLIFrameElement.prototype, 'src', {
@@ -88,13 +104,7 @@ export async function onRequestGet(context) {
             return val;
           },
           set: function(val) {
-            if (val && typeof val === 'string' && !val.startsWith('/') && !val.startsWith('about:') && !val.includes('/api/proxy')) {
-              try {
-                const absoluteUrl = new URL(val, window.location.href).href;
-                val = '/api/proxy?url=' + encodeURIComponent(absoluteUrl);
-              } catch(e) {}
-            }
-            originalSrcDescriptor.set.call(this, val);
+            originalSrcDescriptor.set.call(this, resolveAndProxy(val));
           }
         });
       }
@@ -102,12 +112,7 @@ export async function onRequestGet(context) {
       const originalSetAttribute = Element.prototype.setAttribute;
       Element.prototype.setAttribute = function(name, value) {
         if (name && name.toLowerCase() === 'src' && this.tagName && this.tagName.toLowerCase() === 'iframe') {
-          if (value && typeof value === 'string' && !value.startsWith('/') && !value.startsWith('about:') && !value.includes('/api/proxy')) {
-            try {
-              const absoluteUrl = new URL(value, window.location.href).href;
-              value = '/api/proxy?url=' + encodeURIComponent(absoluteUrl);
-            } catch(e) {}
-          }
+          value = resolveAndProxy(value);
         }
         originalSetAttribute.call(this, name, value);
       };
