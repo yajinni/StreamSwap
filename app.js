@@ -42,6 +42,9 @@ const state = {
     initialY: 0
   },
   
+  // Audio State
+  isOverlayMuted: true,
+  
   // Interaction State
   isInteractMode: false
 };
@@ -125,9 +128,33 @@ function setRoles(main, overlay) {
   // Sync interact lock states on swap
   syncInteractMode();
 
+  // Reset overlay to muted state by default on roles swap
+  state.isOverlayMuted = true;
+  syncOverlayMuteIcon();
+
   // Mute/Unmute active roles: Main unmuted, Overlay (PIP) muted
   setIframeMuted(main.querySelector('iframe'), false);
   setIframeMuted(overlay.querySelector('iframe'), true);
+}
+
+// Synchronize the mute button visual icons in the active overlay chrome
+function syncOverlayMuteIcon() {
+  if (!state.overlayWrapper) return;
+  const muteBtn = state.overlayWrapper.querySelector('.btn-mute');
+  if (!muteBtn) return;
+  
+  const iconUp = muteBtn.querySelector('.icon-volume-up');
+  const iconOff = muteBtn.querySelector('.icon-volume-off');
+  
+  if (state.isOverlayMuted) {
+    iconUp.classList.add('hidden');
+    iconOff.classList.remove('hidden');
+    muteBtn.title = "Unmute PIP Stream";
+  } else {
+    iconUp.classList.remove('hidden');
+    iconOff.classList.add('hidden');
+    muteBtn.title = "Mute PIP Stream";
+  }
 }
 
 // Cross-origin helper to mute/unmute players (YouTube, Twitch, Vimeo) via postMessage APIs
@@ -533,19 +560,18 @@ function setupEventListeners() {
       handle.addEventListener('touchstart', (e) => startResize(e, direction));
     });
 
-    // Hover to unmute overlay (PIP) stream
-    const iframe = wrapper.querySelector('iframe');
-    wrapper.addEventListener('mouseenter', () => {
-      if (wrapper.classList.contains('is-overlay')) {
-        setIframeMuted(iframe, false);
-      }
-    });
-
-    wrapper.addEventListener('mouseleave', () => {
-      if (wrapper.classList.contains('is-overlay')) {
-        setIframeMuted(iframe, true);
-      }
-    });
+    // Mute/Unmute button click handler on overlay
+    const muteBtn = wrapper.querySelector('.btn-mute');
+    if (muteBtn) {
+      muteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (wrapper.classList.contains('is-overlay')) {
+          state.isOverlayMuted = !state.isOverlayMuted;
+          syncOverlayMuteIcon();
+          setIframeMuted(wrapper.querySelector('iframe'), state.isOverlayMuted);
+        }
+      });
+    }
   });
 
   // Control panel events
