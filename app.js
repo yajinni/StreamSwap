@@ -156,10 +156,68 @@ function swapStreams() {
   }, 300);
 }
 
+// Helper to auto-detect and convert stream platform URLs to their embed formats
+function autoEmbedUrl(urlStr) {
+  if (!urlStr) return 'about:blank';
+  
+  let url = urlStr.trim();
+  if (!url) return 'about:blank';
+
+  // Ensure URL has a protocol
+  if (!/^https?:\/\//i.test(url)) {
+    url = 'https://' + url;
+  }
+  
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    
+    // YouTube Support
+    if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
+      let videoId = '';
+      if (hostname.includes('youtu.be')) {
+        videoId = parsed.pathname.substring(1);
+      } else {
+        videoId = parsed.searchParams.get('v');
+        if (!videoId && parsed.pathname.startsWith('/embed/')) {
+          return url; // already in embed format
+        }
+        if (!videoId && parsed.pathname.startsWith('/shorts/')) {
+          videoId = parsed.pathname.split('/')[2];
+        }
+      }
+      if (videoId) {
+        return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1`;
+      }
+    }
+    
+    // Twitch Support
+    if (hostname.includes('twitch.tv') && !hostname.includes('player.twitch.tv')) {
+      const channel = parsed.pathname.substring(1).split('/')[0];
+      if (channel && channel !== 'directory' && channel !== 'downloads') {
+        const parent = window.location.hostname || 'localhost';
+        return `https://player.twitch.tv/?channel=${channel}&parent=${parent}&muted=true`;
+      }
+    }
+    
+    // Vimeo Support
+    if (hostname.includes('vimeo.com') && !hostname.includes('player.vimeo.com')) {
+      const videoId = parsed.pathname.substring(1).split('/')[0];
+      if (videoId && /^\d+$/.test(videoId)) {
+        return `https://player.vimeo.com/video/${videoId}?autoplay=1&muted=1`;
+      }
+    }
+  } catch (e) {
+    // If URL is invalid/malformed, return it as-is and let iframe handle error
+  }
+  
+  return url;
+}
+
 // Synchronization of URL values into frames
 function loadUrls(urlA, urlB) {
-  state.urlA = urlA || 'about:blank';
-  state.urlB = urlB || 'about:blank';
+  state.urlA = autoEmbedUrl(urlA);
+  state.urlB = autoEmbedUrl(urlB);
 
   iframeA.src = state.urlA;
   iframeB.src = state.urlB;
@@ -170,6 +228,7 @@ function loadUrls(urlA, urlB) {
   // Initial role configuration (A is main, B is overlay)
   setRoles(state.wrapperA, state.wrapperB);
 }
+
 
 // Drag functionality
 function startDrag(e) {
