@@ -1,7 +1,7 @@
 // State Management
 const state = {
-  urlA: '',
-  urlB: '',
+  urlA: '', // Main stream player URL
+  urlB: '', // PIP stream player URL
   
   // DOM Wrapper references
   wrapperA: document.getElementById('wrapper-a'),
@@ -10,6 +10,14 @@ const state = {
   // Current assignments
   mainWrapper: null,
   overlayWrapper: null,
+  
+  // Setup workflow step: 
+  // 'idle' (waiting for site 1),
+  // 'browsing_1' (browsing site 1 in main frame),
+  // 'loaded_1' (stream 1 locked to PIP overlay; waiting for site 2),
+  // 'browsing_2' (browsing site 2 in main frame),
+  // 'complete' (both streams loaded and locked)
+  setupStep: 'idle',
   
   // Persistent overlay position & size
   overlayConfig: {
@@ -42,14 +50,11 @@ const state = {
     initialY: 0
   },
   
-  // Audio State
   isOverlayMuted: true,
-  
-  // Interaction State
   isInteractMode: false
 };
 
-// Initialize DOM element short references
+// Initialize DOM element references
 const iframeA = document.getElementById('iframe-a');
 const iframeB = document.getElementById('iframe-b');
 const urlInputA = document.getElementById('url-input-a');
@@ -58,14 +63,17 @@ const loadBtn = document.getElementById('load-btn');
 const mainSwapBtn = document.getElementById('main-swap-btn');
 const infoBtn = document.getElementById('info-btn');
 
-// Welcome modal references
-const welcomeModal = document.getElementById('welcome-modal');
-const modalUrlA = document.getElementById('modal-url-a');
-const modalUrlB = document.getElementById('modal-url-b');
-const modalDemoBtn = document.getElementById('modal-demo-btn');
-const modalLaunchBtn = document.getElementById('modal-launch-btn');
+// Extractor and help references
+const extractorBtn = document.getElementById('extractor-btn');
+const extractorModal = document.getElementById('extractor-modal');
+const closeExtractorBtn = document.getElementById('close-extractor-btn');
+const extractUrlBtn = document.getElementById('extract-url-btn');
+const extractorUrlInput = document.getElementById('extractor-url-input');
+const extractorHtmlInput = document.getElementById('extractor-html-input');
+const extractRunBtn = document.getElementById('extract-run-btn');
+const extractionResults = document.getElementById('extraction-results');
+const streamsList = document.getElementById('streams-list');
 
-// Help modal references
 const helpModal = document.getElementById('help-modal');
 const closeHelpBtn = document.getElementById('close-help-btn');
 const closeHelpConfirmBtn = document.getElementById('close-help-confirm-btn');
@@ -74,9 +82,25 @@ const closeHelpConfirmBtn = document.getElementById('close-help-confirm-btn');
 const dockedWidget = document.getElementById('docked-overlay-widget');
 const restoreOverlayBtn = document.getElementById('restore-overlay-btn');
 
-// Control bar collapse references
+// Control bar references
 const controlBarContainer = document.getElementById('control-bar-container');
 const controlBarToggle = document.getElementById('control-bar-toggle');
+
+// Setup Flow DOM references
+const setupFlowContainer = document.getElementById('setup-flow-container');
+const activeFlowContainer = document.getElementById('active-flow-container');
+const setupUrlInput = document.getElementById('setup-url-input');
+const setupBrowseBtn = document.getElementById('setup-browse-btn');
+const setupStepBadge = document.getElementById('setup-step-badge');
+const setupInstructionsOverlay = document.getElementById('setup-instructions-overlay');
+const mainDemoLaunchBtn = document.getElementById('main-demo-launch-btn');
+
+// Floating Detector Panel references
+const detectorPanel = document.getElementById('detector-panel');
+const detectorStatus = document.getElementById('detector-status');
+const detectorResults = document.getElementById('detector-results');
+const detectorStreamsList = document.getElementById('detector-streams-list');
+const closeDetectorBtn = document.getElementById('close-detector-btn');
 
 // Setup default overlay position on load
 function initOverlayCoordinates() {
@@ -109,12 +133,14 @@ function setRoles(main, overlay) {
   // Manage title label in overlays
   const titleA = state.wrapperA.querySelector('.stream-title');
   const titleB = state.wrapperB.querySelector('.stream-title');
-  titleA.textContent = state.mainWrapper === state.wrapperA ? "Main Screen (Stream A)" : "Overlay Screen (Stream A)";
-  titleB.textContent = state.mainWrapper === state.wrapperB ? "Main Screen (Stream B)" : "Overlay Screen (Stream B)";
+  titleA.textContent = state.mainWrapper === state.wrapperA ? "Main Screen" : "Overlay Screen (PIP)";
+  titleB.textContent = state.mainWrapper === state.wrapperB ? "Main Screen" : "Overlay Screen (PIP)";
 
-  // Synchronize inputs in toolbar
-  urlInputA.value = state.wrapperA.querySelector('iframe').src;
-  urlInputB.value = state.wrapperB.querySelector('iframe').src;
+  // Synchronize inputs in toolbar if complete
+  if (state.setupStep === 'complete') {
+    urlInputA.value = state.urlA;
+    urlInputB.value = state.urlB;
+  }
 
   // If minimized, maintain minimized visibility
   if (state.overlayConfig.isMinimized) {
@@ -137,24 +163,13 @@ function setRoles(main, overlay) {
   setIframeMuted(overlay.querySelector('iframe'), true);
 }
 
-// Synchronize the mute button visual icons in the active overlay chrome
-function syncOverlayMuteIcon() {
+// Apply position values to DOM
+function applyOverlayPosition() {
   if (!state.overlayWrapper) return;
-  const muteBtn = state.overlayWrapper.querySelector('.btn-mute');
-  if (!muteBtn) return;
-  
-  const iconUp = muteBtn.querySelector('.icon-volume-up');
-  const iconOff = muteBtn.querySelector('.icon-volume-off');
-  
-  if (state.isOverlayMuted) {
-    iconUp.classList.add('hidden');
-    iconOff.classList.remove('hidden');
-    muteBtn.title = "Unmute PIP Stream";
-  } else {
-    iconUp.classList.remove('hidden');
-    iconOff.classList.add('hidden');
-    muteBtn.title = "Mute PIP Stream";
-  }
+  state.overlayWrapper.style.left = `${state.overlayConfig.x}px`;
+  state.overlayWrapper.style.top = `${state.overlayConfig.y}px`;
+  state.overlayWrapper.style.width = `${state.overlayConfig.width}px`;
+  state.overlayWrapper.style.height = `${state.overlayConfig.height}px`;
 }
 
 // Cross-origin helper to mute/unmute players (YouTube, Twitch, Vimeo) via postMessage APIs
@@ -176,7 +191,6 @@ function setIframeMuted(iframe, isMuted) {
     }
     // 3. Twitch postMessage API
     else if (src.includes('player.twitch.tv')) {
-      // Send both Twitch command variations
       iframe.contentWindow.postMessage(JSON.stringify({ action: isMuted ? 'mute' : 'unmute' }), '*');
       iframe.contentWindow.postMessage(JSON.stringify({ event: isMuted ? 'mute' : 'unmute' }), '*');
     }
@@ -185,34 +199,44 @@ function setIframeMuted(iframe, isMuted) {
   }
 }
 
-// Apply position values to DOM
-function applyOverlayPosition() {
+// Synchronize the mute button visual icons in the active overlay chrome
+function syncOverlayMuteIcon() {
   if (!state.overlayWrapper) return;
-  state.overlayWrapper.style.left = `${state.overlayConfig.x}px`;
-  state.overlayWrapper.style.top = `${state.overlayConfig.y}px`;
-  state.overlayWrapper.style.width = `${state.overlayConfig.width}px`;
-  state.overlayWrapper.style.height = `${state.overlayConfig.height}px`;
+  const muteBtn = state.overlayWrapper.querySelector('.btn-mute');
+  if (!muteBtn) return;
+  
+  const iconUp = muteBtn.querySelector('.icon-volume-up');
+  const iconOff = muteBtn.querySelector('.icon-volume-off');
+  
+  if (state.isOverlayMuted) {
+    iconUp.classList.add('hidden');
+    iconOff.classList.remove('hidden');
+    muteBtn.title = "Unmute PIP Stream";
+  } else {
+    iconUp.classList.remove('hidden');
+    iconOff.classList.add('hidden');
+    muteBtn.title = "Mute PIP Stream";
+  }
 }
 
 // Seamless Swapping Engine (without reloading)
 function swapStreams() {
   if (!state.mainWrapper || !state.overlayWrapper) return;
   
-  // Add scale animation class to overlay for transitions
-  state.overlayWrapper.style.transition = 'all var(--transition-normal)';
-  state.mainWrapper.style.transition = 'all var(--transition-normal)';
-
   // Save current sizes/positions in case of offsets
   const tempMain = state.mainWrapper;
   const tempOverlay = state.overlayWrapper;
 
-  setRoles(tempOverlay, tempMain);
+  // Swap URLs state tracker
+  const tempUrl = state.urlA;
+  state.urlA = state.urlB;
+  state.urlB = tempUrl;
 
-  // Clear transitions after animation ends to prevent lag during dragging
-  setTimeout(() => {
-    if (state.overlayWrapper) state.overlayWrapper.style.transition = '';
-    if (state.mainWrapper) state.mainWrapper.style.transition = '';
-  }, 300);
+  // Save to localStorage
+  localStorage.setItem('streamswap_url_a', state.urlA);
+  localStorage.setItem('streamswap_url_b', state.urlB);
+
+  setRoles(tempOverlay, tempMain);
 }
 
 // Helper to auto-detect and convert stream platform URLs to their embed formats
@@ -267,13 +291,13 @@ function autoEmbedUrl(urlStr) {
       }
     }
   } catch (e) {
-    // If URL is invalid/malformed, return it as-is and let iframe handle error
+    // If URL is invalid/malformed, return it as-is
   }
   
   return url;
 }
 
-// Synchronization of URL values into frames
+// Synchronization of URL values into frames directly (bypassing search setup wizard)
 function loadUrls(urlA, urlB) {
   state.urlA = autoEmbedUrl(urlA);
   state.urlB = autoEmbedUrl(urlB);
@@ -284,22 +308,196 @@ function loadUrls(urlA, urlB) {
   urlInputA.value = state.urlA;
   urlInputB.value = state.urlB;
 
-  // Save raw input URLs to localStorage to remember them across page reloads
-  if (urlA && urlA !== 'about:blank') {
-    localStorage.setItem('streamswap_url_a', urlA);
-  }
-  if (urlB && urlB !== 'about:blank') {
-    localStorage.setItem('streamswap_url_b', urlB);
-  }
-
   // Initial role configuration (A is main, B is overlay)
   setRoles(state.wrapperA, state.wrapperB);
 }
 
+// Setup Step 1: Browse site for Stream 1
+function startSetupStep1(urlSite) {
+  if (!urlSite) return;
+  state.setupStep = 'browsing_1';
+  
+  // Hide main landing instructions overlay
+  setupInstructionsOverlay.classList.add('hidden');
+  
+  // Load site via proxy in Main Frame
+  iframeA.src = `/api/proxy?url=${encodeURIComponent(urlSite)}`;
+  
+  // Reset overlay PIP stream to blank
+  iframeB.src = 'about:blank';
+  
+  // Update status UI
+  setupStepBadge.textContent = "Browse 1";
+  detectorStatus.textContent = "Browsing site for Stream 1 (PIP). Navigate to the player stream...";
+  detectorResults.classList.add('hidden');
+  detectorPanel.classList.remove('hidden');
+}
+
+// Setup Step 2: Lock Stream 1 into PIP overlay, reset Main Frame to browse Stream 2
+function selectStreamForPIP(streamUrl) {
+  state.urlB = autoEmbedUrl(streamUrl);
+  
+  // Load the stream player in Overlay Frame B
+  iframeB.src = state.urlB;
+  
+  // Update state step
+  state.setupStep = 'loaded_1';
+  
+  // Set main frame back to empty browser
+  iframeA.src = 'about:blank';
+  
+  // Reveal welcome overlay again with step 2 directions
+  setupInstructionsOverlay.querySelector('h1').innerHTML = '<span class="gradient-text">Stream 1 PIP Set!</span>';
+  setupInstructionsOverlay.querySelector('p').textContent = "Step 2: Enter a site address in the top bar to browse and locate Stream 2 (Main Screen).";
+  setupInstructionsOverlay.classList.remove('hidden');
+  
+  // Sync toolbar badge & inputs
+  setupUrlInput.value = '';
+  setupStepBadge.textContent = "Find Stream 2";
+  
+  // Update detector status
+  detectorStatus.textContent = "Enter a website URL above to scan for Stream 2...";
+  detectorResults.classList.add('hidden');
+}
+
+// Setup Step 3: Browse site for Stream 2
+function startSetupStep2(urlSite) {
+  if (!urlSite) return;
+  state.setupStep = 'browsing_2';
+  
+  // Hide setup overlay
+  setupInstructionsOverlay.classList.add('hidden');
+  
+  // Load site 2 via proxy in Main Frame
+  iframeA.src = `/api/proxy?url=${encodeURIComponent(urlSite)}`;
+  
+  // Update status UI
+  setupStepBadge.textContent = "Browse 2";
+  detectorStatus.textContent = "Browsing site for Stream 2 (Main). Navigate to the player stream...";
+  detectorResults.classList.add('hidden');
+  detectorPanel.classList.remove('hidden');
+}
+
+// Setup Step 4: Lock Stream 2 into Main Screen and complete workflow
+function selectStreamForMain(streamUrl) {
+  state.urlA = autoEmbedUrl(streamUrl);
+  
+  // Load the final player in Main Frame A
+  iframeA.src = state.urlA;
+  
+  // Update state to complete
+  state.setupStep = 'complete';
+  
+  // Hide instructions and detector overlays
+  setupInstructionsOverlay.classList.add('hidden');
+  detectorPanel.classList.add('hidden');
+  
+  // Toggle control inputs: hide setup, show active
+  setupFlowContainer.classList.add('hidden');
+  activeFlowContainer.classList.remove('hidden');
+  
+  // Sync inputs
+  urlInputA.value = state.urlA;
+  urlInputB.value = state.urlB;
+  
+  // Save both stream player URLs to localStorage to remember them on reload!
+  localStorage.setItem('streamswap_url_a', state.urlA);
+  localStorage.setItem('streamswap_url_b', state.urlB);
+  
+  // Sync default layout and roles
+  setRoles(state.wrapperA, state.wrapperB);
+}
+
+// Trigger setup browser scan command
+function triggerBrowseAction() {
+  const url = setupUrlInput.value.trim();
+  if (!url) return;
+
+  if (state.setupStep === 'idle' || state.setupStep === 'browsing_1') {
+    startSetupStep1(url);
+  } else if (state.setupStep === 'loaded_1' || state.setupStep === 'browsing_2') {
+    startSetupStep2(url);
+  }
+}
+
+// Reset setup wizard
+function resetSetupWizard() {
+  state.setupStep = 'idle';
+  state.urlA = '';
+  state.urlB = '';
+  localStorage.removeItem('streamswap_url_a');
+  localStorage.removeItem('streamswap_url_b');
+  
+  // Reset wrappers
+  iframeA.src = 'about:blank';
+  iframeB.src = 'about:blank';
+  
+  // Reset welcome panel text
+  setupInstructionsOverlay.querySelector('h1').innerHTML = '<span class="gradient-text">StreamSwap</span>';
+  setupInstructionsOverlay.querySelector('p').textContent = "Enter a site address in the top bar to browse and locate streams. We will detect video players automatically as you navigate!";
+  setupInstructionsOverlay.classList.remove('hidden');
+  
+  // Reset inputs
+  setupUrlInput.value = '';
+  setupStepBadge.textContent = "Find Stream 1";
+  
+  // Toggle bar containers
+  setupFlowContainer.classList.remove('hidden');
+  activeFlowContainer.classList.add('hidden');
+  
+  detectorPanel.classList.add('hidden');
+}
+
+// Handle messages sent from proxied sniffer frame
+function handleSnifferMessages(event) {
+  if (event.data && event.data.type === 'STREAM_SWAP_DETECTED_STREAMS') {
+    const streams = event.data.streams;
+    
+    // Clear waiting status
+    detectorStatus.textContent = "";
+    detectorStatus.style.padding = "0px";
+    
+    detectorStreamsList.innerHTML = '';
+    
+    streams.forEach((stream, index) => {
+      const item = document.createElement('div');
+      item.className = 'stream-item';
+      
+      let domainLabel = stream.type;
+      try {
+        const parsed = new URL(stream.url);
+        domainLabel = `${stream.type} (${parsed.hostname})`;
+      } catch(e) {}
+      
+      item.innerHTML = `
+        <div class="stream-item-info">
+          <span class="stream-item-title">#${index + 1} - ${domainLabel}</span>
+          <span class="stream-item-url" title="${stream.url}">${stream.url}</span>
+        </div>
+        <div class="stream-item-actions">
+          <button class="glow-btn-sm btn-select-stream" style="background: var(--accent-gradient);">Select</button>
+        </div>
+      `;
+      
+      // Wire selection button
+      item.querySelector('.btn-select-stream').addEventListener('click', () => {
+        if (state.setupStep === 'browsing_1') {
+          selectStreamForPIP(stream.url);
+        } else if (state.setupStep === 'browsing_2') {
+          selectStreamForMain(stream.url);
+        }
+      });
+      
+      detectorStreamsList.appendChild(item);
+    });
+    
+    detectorResults.classList.remove('hidden');
+  }
+}
 
 // Drag functionality
 function startDrag(e) {
-  if (state.isInteractMode) return; // Disable drag if interact mode is active
+  if (state.isInteractMode) return;
   
   const clientX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
   const clientY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
@@ -326,7 +524,6 @@ function handleDrag(e) {
   let newX = state.drag.initialX + dx;
   let newY = state.drag.initialY + dy;
 
-  // Screen constraints checking (prevent window from disappearing completely)
   const maxLeft = window.innerWidth - 60;
   const maxTop = window.innerHeight - 40;
   
@@ -349,7 +546,7 @@ function stopDrag() {
 
 // Resize functionality (Handles all 8 directions)
 function startResize(e, direction) {
-  e.stopPropagation(); // Stop click events propagating
+  e.stopPropagation();
   e.preventDefault();
 
   const clientX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
@@ -383,7 +580,6 @@ function handleResize(e) {
 
   const dir = state.resize.direction;
 
-  // Width adjustment
   if (dir.includes('e')) {
     newW = state.resize.initialWidth + dx;
   } else if (dir.includes('w')) {
@@ -391,7 +587,6 @@ function handleResize(e) {
     newX = state.resize.initialX + dx;
   }
 
-  // Height adjustment
   if (dir.includes('s')) {
     newH = state.resize.initialHeight + dy;
   } else if (dir.includes('n')) {
@@ -399,21 +594,15 @@ function handleResize(e) {
     newY = state.resize.initialY + dy;
   }
 
-  // Apply constraints
   if (newW < state.overlayConfig.minWidth) {
-    if (dir.includes('w')) {
-      newX = newX - (state.overlayConfig.minWidth - newW);
-    }
+    if (dir.includes('w')) newX = newX - (state.overlayConfig.minWidth - newW);
     newW = state.overlayConfig.minWidth;
   }
   if (newH < state.overlayConfig.minHeight) {
-    if (dir.includes('n')) {
-      newY = newY - (state.overlayConfig.minHeight - newH);
-    }
+    if (dir.includes('n')) newY = newY - (state.overlayConfig.minHeight - newH);
     newH = state.overlayConfig.minHeight;
   }
 
-  // Prevent sizing larger than window viewport
   newW = Math.min(newW, window.innerWidth);
   newH = Math.min(newH, window.innerHeight);
 
@@ -462,7 +651,6 @@ function minimizeOverlay() {
   state.overlayConfig.isMinimized = true;
   state.overlayWrapper.classList.add('hidden');
   
-  // Show docked thumbnail alert
   const overlayIframe = state.overlayWrapper.querySelector('iframe');
   const urlDomain = overlayIframe.src !== 'about:blank' 
     ? new URL(overlayIframe.src).hostname 
@@ -481,6 +669,9 @@ function restoreOverlay() {
 
 // Global Event Listeners setup
 function setupEventListeners() {
+  // Sniffer postMessage listener
+  window.addEventListener('message', handleSnifferMessages);
+
   // Global drag movements
   window.addEventListener('mousemove', (e) => {
     if (state.drag.isDragging) handleDrag(e);
@@ -503,7 +694,7 @@ function setupEventListeners() {
     if (state.resize.isResizing) stopResize();
   });
 
-  // Window resize handler: adjusts overlay positions to keep them inside viewport bounds
+  // Window resize bounds checks
   window.addEventListener('resize', () => {
     const maxX = window.innerWidth - state.overlayConfig.width - 20;
     const maxY = window.innerHeight - state.overlayConfig.height - 20;
@@ -512,10 +703,9 @@ function setupEventListeners() {
     applyOverlayPosition();
   });
 
-  // Frame Overlay Click Swap Trigger (swaps on cover click, unless interact is active)
+  // Frame Overlay Click Swap Trigger
   document.querySelectorAll('.frame-overlay-cover').forEach(cover => {
     cover.addEventListener('click', (e) => {
-      // Find wrapper parent
       const wrapper = cover.closest('.frame-wrapper');
       if (wrapper && wrapper.classList.contains('is-overlay') && !state.isInteractMode) {
         swapStreams();
@@ -530,11 +720,9 @@ function setupEventListeners() {
     const interactBtn = wrapper.querySelector('.btn-interact');
     const minBtn = wrapper.querySelector('.btn-minimize');
 
-    // Drag handle triggers drag
     dragBar.addEventListener('mousedown', (e) => startDrag(e));
     dragBar.addEventListener('touchstart', (e) => startDrag(e));
 
-    // Internal Actions
     swapBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       swapStreams();
@@ -574,17 +762,47 @@ function setupEventListeners() {
     }
   });
 
-  // Control panel events
+  // Setup wizard browse triggers
+  setupBrowseBtn.addEventListener('click', triggerBrowseAction);
+  setupUrlInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') triggerBrowseAction();
+  });
+
+  mainDemoLaunchBtn.addEventListener('click', () => {
+    // Populate with OSM map and Vimeo loop
+    loadUrls(
+      'https://www.openstreetmap.org/export/embed.html?bbox=-0.15%2C51.50%2C-0.13%2C51.52&layer=mapnik',
+      'https://player.vimeo.com/video/76979871?autoplay=1&loop=1&muted=1&background=1'
+    );
+    state.setupStep = 'complete';
+    setupInstructionsOverlay.classList.add('hidden');
+    setupFlowContainer.classList.add('hidden');
+    activeFlowContainer.classList.remove('hidden');
+    localStorage.setItem('streamswap_url_a', state.urlA);
+    localStorage.setItem('streamswap_url_b', state.urlB);
+  });
+
+  // Active control panel events
   loadBtn.addEventListener('click', () => {
     loadUrls(urlInputA.value.trim(), urlInputB.value.trim());
+    localStorage.setItem('streamswap_url_a', state.urlA);
+    localStorage.setItem('streamswap_url_b', state.urlB);
   });
 
   urlInputA.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') loadUrls(urlInputA.value.trim(), urlInputB.value.trim());
+    if (e.key === 'Enter') {
+      loadUrls(urlInputA.value.trim(), urlInputB.value.trim());
+      localStorage.setItem('streamswap_url_a', state.urlA);
+      localStorage.setItem('streamswap_url_b', state.urlB);
+    }
   });
 
   urlInputB.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') loadUrls(urlInputA.value.trim(), urlInputB.value.trim());
+    if (e.key === 'Enter') {
+      loadUrls(urlInputA.value.trim(), urlInputB.value.trim());
+      localStorage.setItem('streamswap_url_a', state.urlA);
+      localStorage.setItem('streamswap_url_b', state.urlB);
+    }
   });
 
   mainSwapBtn.addEventListener('click', swapStreams);
@@ -595,66 +813,16 @@ function setupEventListeners() {
     controlBarContainer.classList.toggle('control-expanded');
   });
 
-  // Modals actions
-  modalLaunchBtn.addEventListener('click', () => {
-    const a = modalUrlA.value.trim();
-    const b = modalUrlB.value.trim();
-    if (a && b) {
-      loadUrls(a, b);
-      welcomeModal.classList.add('hidden');
-    }
+  // Close detector drawer trigger
+  closeDetectorBtn.addEventListener('click', () => {
+    detectorPanel.classList.add('hidden');
   });
 
-  modalDemoBtn.addEventListener('click', () => {
-    modalUrlA.value = 'https://www.openstreetmap.org/export/embed.html?bbox=-0.15%2C51.50%2C-0.13%2C51.52&layer=mapnik';
-    modalUrlB.value = 'https://player.vimeo.com/video/76979871?autoplay=1&loop=1&muted=1&background=1';
-    loadUrls(modalUrlA.value, modalUrlB.value);
-    welcomeModal.classList.add('hidden');
-  });
-
-  // Dock widget restore action
-  restoreOverlayBtn.addEventListener('click', restoreOverlay);
-
-  // Global Info / Help Actions
-  infoBtn.addEventListener('click', () => {
-    helpModal.classList.remove('hidden');
-  });
-
-  closeHelpBtn.addEventListener('click', () => {
-    helpModal.classList.add('hidden');
-  });
-
-  closeHelpConfirmBtn.addEventListener('click', () => {
-    helpModal.classList.add('hidden');
-  });
-
-  // Load Stream Extractor Bindings
-  setupExtractor();
-}
-
-// Stream Extractor Logic (Automated Cloudflare Worker endpoint API & Manual fallback)
-function setupExtractor() {
-  const extractorBtn = document.getElementById('extractor-btn');
-  const extractorModal = document.getElementById('extractor-modal');
-  const closeExtractorBtn = document.getElementById('close-extractor-btn');
-  
-  const extractorUrlInput = document.getElementById('extractor-url-input');
-  const extractUrlBtn = document.getElementById('extract-url-btn');
-  
-  const extractorHtmlInput = document.getElementById('extractor-html-input');
-  const extractRunBtn = document.getElementById('extract-run-btn');
-  
-  const extractionResults = document.getElementById('extraction-results');
-  const streamsList = document.getElementById('streams-list');
-
-  if (!extractorBtn || !extractorModal) return;
-
-  // Open modal & prepopulate URL inputs with whatever is in Input A (likely what failed)
+  // Extractor panel (CORS Manual backup) events
   extractorBtn.addEventListener('click', () => {
-    if (urlInputA.value && urlInputA.value !== 'about:blank') {
-      extractorUrlInput.value = urlInputA.value;
-    } else if (urlInputB.value && urlInputB.value !== 'about:blank') {
-      extractorUrlInput.value = urlInputB.value;
+    // Fill with current setup URL if available
+    if (setupUrlInput.value) {
+      extractorUrlInput.value = setupUrlInput.value;
     }
     extractorModal.classList.remove('hidden');
     extractionResults.classList.add('hidden');
@@ -664,12 +832,12 @@ function setupExtractor() {
     extractorModal.classList.add('hidden');
   });
 
-  // Helper to render extracted stream buttons in UI
-  function renderStreams(streams) {
+  // Helper to render extracted stream buttons in the backup manual modal
+  function renderManualExtractorStreams(streams) {
     streamsList.innerHTML = '';
     
     if (!streams || streams.length === 0) {
-      streamsList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px; text-align: center;">No video streams or player iframes detected. Make sure to paste the full code or verify the site domain.</div>';
+      streamsList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px; text-align: center;">No streams detected. Make sure to paste the full source.</div>';
     } else {
       streams.forEach((stream, index) => {
         const item = document.createElement('div');
@@ -687,19 +855,16 @@ function setupExtractor() {
             <span class="stream-item-url" title="${stream.url}">${stream.url}</span>
           </div>
           <div class="stream-item-actions">
-            <button class="glow-btn-sm btn-load-main" style="background: #6366f1;">Set Main</button>
-            <button class="glow-btn-sm btn-load-overlay" style="background: #a855f7;">Set PIP</button>
+            <button class="glow-btn-sm btn-load-manual-item" style="background: var(--accent-gradient);">Select Stream</button>
           </div>
         `;
 
-        // Load buttons wireup
-        item.querySelector('.btn-load-main').addEventListener('click', () => {
-          loadUrls(stream.url, urlInputB.value);
-          extractorModal.classList.add('hidden');
-        });
-
-        item.querySelector('.btn-load-overlay').addEventListener('click', () => {
-          loadUrls(urlInputA.value, stream.url);
+        item.querySelector('.btn-load-manual-item').addEventListener('click', () => {
+          if (state.setupStep === 'browsing_1' || state.setupStep === 'idle') {
+            selectStreamForPIP(stream.url);
+          } else {
+            selectStreamForMain(stream.url);
+          }
           extractorModal.classList.add('hidden');
         });
 
@@ -710,50 +875,7 @@ function setupExtractor() {
     extractionResults.classList.remove('hidden');
   }
 
-  // --- METHOD 1: AUTOMATED CLOUDFLARE WORKER PROXY SCAN ---
-  extractUrlBtn.addEventListener('click', async () => {
-    const targetUrl = extractorUrlInput.value.trim();
-    if (!targetUrl) {
-      alert("Please enter a URL to scan.");
-      return;
-    }
-
-    // Disable button state
-    extractUrlBtn.disabled = true;
-    const originalText = extractUrlBtn.textContent;
-    extractUrlBtn.textContent = "Scanning...";
-    streamsList.innerHTML = '<div style="color: var(--accent-light); font-size: 0.85rem; padding: 10px; text-align: center;">Connecting to Cloudflare edge parser and scraping streams... Please wait...</div>';
-    extractionResults.classList.remove('hidden');
-
-    try {
-      // Direct call to our Cloudflare Pages API endpoint
-      const response = await fetch(`/api/scrape?url=${encodeURIComponent(targetUrl)}`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP Error ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      renderStreams(data.streams);
-    } catch (err) {
-      console.error(err);
-      streamsList.innerHTML = `
-        <div style="color: #f43f5e; font-size: 0.85rem; padding: 10px; text-align: center; border: 1px dashed rgba(244, 63, 94, 0.3); border-radius: var(--radius-md); background: rgba(244, 63, 94, 0.05);">
-          <strong>Automatic Scan Failed:</strong> ${err.message}<br><br>
-          <span style="font-size: 0.75rem; color: var(--text-muted);">This is likely due to Cloudflare DDoS protection or anti-bot guards blocking server-side scraping. Please use the <strong>Manual Fallback</strong> below by pasting the page source!</span>
-        </div>
-      `;
-    } finally {
-      extractUrlBtn.disabled = false;
-      extractUrlBtn.textContent = originalText;
-    }
-  });
-
-  // --- METHOD 2: MANUAL SOURCE CODE COPY-PASTE PARSER ---
+  // Backup Manual Scanner Run
   extractRunBtn.addEventListener('click', () => {
     const html = extractorHtmlInput.value;
     if (!html.trim()) {
@@ -764,7 +886,6 @@ function setupExtractor() {
     const streams = [];
     const seen = new Set();
 
-    // 1. Scan iframe src attributes
     const iframeRegex = /<iframe[^>]+src=["']([^"']+)["']/gi;
     let match;
     while ((match = iframeRegex.exec(html)) !== null) {
@@ -776,7 +897,6 @@ function setupExtractor() {
       }
     }
 
-    // 2. Scan video and source tags
     const videoRegex = /<(?:video|source)[^>]+src=["']([^"']+)["']/gi;
     while ((match = videoRegex.exec(html)) !== null) {
       let url = match[1];
@@ -787,7 +907,6 @@ function setupExtractor() {
       }
     }
 
-    // 3. Scan generic stream-like URLs in text
     const genericStreamRegex = /https?:\/\/[^\s"'><]+(?:embedstream|weakstream|weakspell|sportsurge|vshare|stream|player|play|live)[^\s"'><]*/gi;
     while ((match = genericStreamRegex.exec(html)) !== null) {
       const url = match[0];
@@ -797,7 +916,6 @@ function setupExtractor() {
       }
     }
 
-    // 4. Scan for direct m3u8 playlists
     const m3u8Regex = /https?:\/\/[^\s"'><]+\.m3u8[^\s"'><]*/gi;
     while ((match = m3u8Regex.exec(html)) !== null) {
       const url = match[0];
@@ -807,7 +925,47 @@ function setupExtractor() {
       }
     }
 
-    renderStreams(streams);
+    renderManualExtractorStreams(streams);
+  });
+
+  // Automated modal scan call
+  extractUrlBtn.addEventListener('click', async () => {
+    const targetUrl = extractorUrlInput.value.trim();
+    if (!targetUrl) return;
+
+    extractUrlBtn.disabled = true;
+    const originalText = extractUrlBtn.textContent;
+    extractUrlBtn.textContent = "Scanning...";
+    streamsList.innerHTML = '<div style="color: var(--accent-light); font-size: 0.85rem; padding: 10px; text-align: center;">Scanning page...</div>';
+    extractionResults.classList.remove('hidden');
+
+    try {
+      const response = await fetch(`/api/scrape?url=${encodeURIComponent(targetUrl)}`);
+      if (!response.ok) throw new Error("Connection failed");
+      const data = await response.json();
+      renderManualExtractorStreams(data.streams);
+    } catch (err) {
+      streamsList.innerHTML = `<div style="color: #f43f5e; font-size: 0.85rem; padding: 10px; text-align: center;">Scan failed. Copy and paste page HTML code below.</div>`;
+    } finally {
+      extractUrlBtn.disabled = false;
+      extractUrlBtn.textContent = originalText;
+    }
+  });
+
+  // Restore docked PIP widget
+  restoreOverlayBtn.addEventListener('click', restoreOverlay);
+
+  // Global Help Modal Bindings
+  infoBtn.addEventListener('click', () => {
+    helpModal.classList.remove('hidden');
+  });
+
+  closeHelpBtn.addEventListener('click', () => {
+    helpModal.classList.add('hidden');
+  });
+
+  closeHelpConfirmBtn.addEventListener('click', () => {
+    helpModal.classList.add('hidden');
   });
 }
 
@@ -816,21 +974,24 @@ window.addEventListener('DOMContentLoaded', () => {
   initOverlayCoordinates();
   setupEventListeners();
   
-  // Check if there are last saved URLs to restore from localStorage
+  // Check if there are last saved stream players to restore from localStorage
   const savedA = localStorage.getItem('streamswap_url_a');
   const savedB = localStorage.getItem('streamswap_url_b');
   
   if (savedA && savedB) {
-    urlInputA.value = savedA;
-    urlInputB.value = savedB;
-    loadUrls(savedA, savedB);
+    state.setupStep = 'complete';
     
-    // Auto-hide onboarding modal since we are resuming previous streams
-    const welcomeModal = document.getElementById('welcome-modal');
-    if (welcomeModal) welcomeModal.classList.add('hidden');
+    // Toggle bar containers
+    setupFlowContainer.classList.add('hidden');
+    activeFlowContainer.classList.remove('hidden');
+    
+    // Hide instructions overlay
+    setupInstructionsOverlay.classList.add('hidden');
+    
+    // Load streams
+    loadUrls(savedA, savedB);
   } else {
-    // Leave URL fields blank by default on load if no session exists
-    urlInputA.value = '';
-    urlInputB.value = '';
+    // Begin setup wizard in idle state
+    resetSetupWizard();
   }
 });
