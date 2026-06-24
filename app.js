@@ -124,6 +124,38 @@ function setRoles(main, overlay) {
 
   // Sync interact lock states on swap
   syncInteractMode();
+
+  // Mute/Unmute active roles: Main unmuted, Overlay (PIP) muted
+  setIframeMuted(main.querySelector('iframe'), false);
+  setIframeMuted(overlay.querySelector('iframe'), true);
+}
+
+// Cross-origin helper to mute/unmute players (YouTube, Twitch, Vimeo) via postMessage APIs
+function setIframeMuted(iframe, isMuted) {
+  if (!iframe) return;
+  const src = iframe.src;
+  if (!src || src === 'about:blank') return;
+
+  try {
+    // 1. YouTube postMessage API (needs enablejsapi=1)
+    if (src.includes('youtube.com/embed')) {
+      const command = isMuted ? 'mute' : 'unMute';
+      iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func: command, args: '' }), '*');
+    }
+    // 2. Vimeo postMessage API
+    else if (src.includes('player.vimeo.com')) {
+      const command = isMuted ? 'mute' : 'unmute';
+      iframe.contentWindow.postMessage(JSON.stringify({ method: command }), '*');
+    }
+    // 3. Twitch postMessage API
+    else if (src.includes('player.twitch.tv')) {
+      // Send both Twitch command variations
+      iframe.contentWindow.postMessage(JSON.stringify({ action: isMuted ? 'mute' : 'unmute' }), '*');
+      iframe.contentWindow.postMessage(JSON.stringify({ event: isMuted ? 'mute' : 'unmute' }), '*');
+    }
+  } catch (e) {
+    console.warn('PostMessage mute error:', e);
+  }
 }
 
 // Apply position values to DOM
@@ -187,7 +219,7 @@ function autoEmbedUrl(urlStr) {
         }
       }
       if (videoId) {
-        return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1`;
+        return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&enablejsapi=1`;
       }
     }
     
@@ -492,6 +524,20 @@ function setupEventListeners() {
       handle.addEventListener('mousedown', (e) => startResize(e, direction));
       handle.addEventListener('touchstart', (e) => startResize(e, direction));
     });
+
+    // Hover to unmute overlay (PIP) stream
+    const iframe = wrapper.querySelector('iframe');
+    wrapper.addEventListener('mouseenter', () => {
+      if (wrapper.classList.contains('is-overlay')) {
+        setIframeMuted(iframe, false);
+      }
+    });
+
+    wrapper.addEventListener('mouseleave', () => {
+      if (wrapper.classList.contains('is-overlay')) {
+        setIframeMuted(iframe, true);
+      }
+    });
   });
 
   // Control panel events
@@ -736,8 +782,7 @@ window.addEventListener('DOMContentLoaded', () => {
   initOverlayCoordinates();
   setupEventListeners();
   
-  // Set default values inside inputs to make setup quick
-  urlInputA.value = modalUrlA.value;
-  urlInputB.value = modalUrlB.value;
+  // Leave URL fields blank by default on load
+  urlInputA.value = '';
+  urlInputB.value = '';
 });
-
