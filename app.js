@@ -290,11 +290,18 @@ function autoEmbedUrl(urlStr) {
         return `https://player.vimeo.com/video/${videoId}?autoplay=1&muted=1`;
       }
     }
+
+    // OpenStreetMap & relative paths
+    if (hostname.includes('openstreetmap.org') || parsed.pathname.includes('/api/proxy') || hostname === window.location.hostname) {
+      return url;
+    }
   } catch (e) {
     // If URL is invalid/malformed, return it as-is
+    return url;
   }
   
-  return url;
+  // Proxy all other generic streaming player URLs to bypass X-Frame-Options / Content Security Policies
+  return `/api/proxy?url=${encodeURIComponent(url)}`;
 }
 
 // Synchronization of URL values into frames directly (bypassing search setup wizard)
