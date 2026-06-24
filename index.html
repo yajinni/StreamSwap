@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StreamSwap — Dual Screen Pip Overlay & Swapping</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Background / Main / Overlay Container -->
+  <div id="app-container">
+    
+    <!-- Wrapper A -->
+    <div id="wrapper-a" class="frame-wrapper is-main">
+      <div class="iframe-container">
+        <iframe id="iframe-a" src="about:blank" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
+      </div>
+      <!-- Click Blocker & Swap Overlay -->
+      <div class="frame-overlay-cover"></div>
+      
+      <!-- Drag & Resize Header Chrome (Only active when in overlay mode) -->
+      <div class="overlay-header">
+        <div class="drag-handle">
+          <svg class="icon" viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M7 19h10V4H7v15zm0 2c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2v15c0 1.1-.9 2-2 2H7zM9 7h6v2H9V7zm0 4h6v2H9v-2zm0 4h6v2H9v-2z"/></svg>
+          <span class="stream-title">Stream A</span>
+        </div>
+        <div class="header-actions">
+          <button class="action-btn btn-interact" title="Interact Mode (Allow clicks inside)">
+            <svg class="icon icon-lock" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2s2 .9 2 2s-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1c1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+            <svg class="icon icon-unlock hidden" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2s-2 .9-2 2s.9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1c1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/></svg>
+          </button>
+          <button class="action-btn btn-swap" title="Swap Streams">
+            <svg class="icon" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M16 17.01V10c0-.55-.45-1-1-1s-1 .45-1 1v7.01h-3L15 21l4-3.99h-3zM9 3L5 6.99h3V14c0 .55.45 1 1 1s1-.45 1-1V6.99h3L9 3z"/></svg>
+          </button>
+          <button class="action-btn btn-minimize" title="Minimize / Dock">
+            <svg class="icon" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 13H5v-2h14v2z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Resize Handles -->
+      <div class="resize-handle n"></div>
+      <div class="resize-handle s"></div>
+      <div class="resize-handle e"></div>
+      <div class="resize-handle w"></div>
+      <div class="resize-handle nw"></div>
+      <div class="resize-handle ne"></div>
+      <div class="resize-handle sw"></div>
+      <div class="resize-handle se"></div>
+    </div>
+
+    <!-- Wrapper B -->
+    <div id="wrapper-b" class="frame-wrapper is-overlay">
+      <div class="iframe-container">
+        <iframe id="iframe-b" src="about:blank" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
+      </div>
+      <!-- Click Blocker & Swap Overlay -->
+      <div class="frame-overlay-cover"></div>
+      
+      <!-- Drag & Resize Header Chrome -->
+      <div class="overlay-header">
+        <div class="drag-handle">
+          <svg class="icon" viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M7 19h10V4H7v15zm0 2c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2v15c0 1.1-.9 2-2 2H7zM9 7h6v2H9V7zm0 4h6v2H9v-2zm0 4h6v2H9v-2z"/></svg>
+          <span class="stream-title">Stream B</span>
+        </div>
+        <div class="header-actions">
+          <button class="action-btn btn-interact" title="Interact Mode (Allow clicks inside)">
+            <svg class="icon icon-lock" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2s2 .9 2 2s-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1c1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+            <svg class="icon icon-unlock hidden" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2s-2 .9-2 2s.9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1c1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/></svg>
+          </button>
+          <button class="action-btn btn-swap" title="Swap Streams">
+            <svg class="icon" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M16 17.01V10c0-.55-.45-1-1-1s-1 .45-1 1v7.01h-3L15 21l4-3.99h-3zM9 3L5 6.99h3V14c0 .55.45 1 1 1s1-.45 1-1V6.99h3L9 3z"/></svg>
+          </button>
+          <button class="action-btn btn-minimize" title="Minimize / Dock">
+            <svg class="icon" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 13H5v-2h14v2z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Resize Handles -->
+      <div class="resize-handle n"></div>
+      <div class="resize-handle s"></div>
+      <div class="resize-handle e"></div>
+      <div class="resize-handle w"></div>
+      <div class="resize-handle nw"></div>
+      <div class="resize-handle ne"></div>
+      <div class="resize-handle sw"></div>
+      <div class="resize-handle se"></div>
+    </div>
+
+  </div>
+
+  <!-- Collapsible Top Floating Control Bar -->
+  <div id="control-bar-container" class="control-expanded">
+    <div id="control-bar">
+      <div class="logo">
+        <span class="logo-accent">Stream</span>Swap
+      </div>
+      <div class="control-inputs">
+        <div class="input-group">
+          <span class="input-badge badge-a">A</span>
+          <input type="text" id="url-input-a" placeholder="Enter Main URL (e.g. Map, Live video)..." aria-label="URL A">
+        </div>
+        <button id="main-swap-btn" class="glass-btn icon-btn" title="Swap Streams">
+          <svg class="icon" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M16 17.01V10c0-.55-.45-1-1-1s-1 .45-1 1v7.01h-3L15 21l4-3.99h-3zM9 3L5 6.99h3V14c0 .55.45 1 1 1s1-.45 1-1V6.99h3L9 3z"/></svg>
+        </button>
+        <div class="input-group">
+          <span class="input-badge badge-b">B</span>
+          <input type="text" id="url-input-b" placeholder="Enter Overlay URL (e.g. Video player)..." aria-label="URL B">
+        </div>
+        <button id="load-btn" class="glow-btn">Load Streams</button>
+      </div>
+      <div class="control-actions">
+        <button id="info-btn" class="glass-btn text-icon" title="Iframe Embed Help">
+          <svg class="icon" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+          <span>Help</span>
+        </button>
+      </div>
+    </div>
+    <!-- Handle to slide the control bar up/down -->
+    <div id="control-bar-toggle" title="Toggle Control Panel">
+      <div class="toggle-indicator"></div>
+    </div>
+  </div>
+
+  <!-- Onboarding / Welcome Modal -->
+  <div id="welcome-modal" class="modal-overlay">
+    <div class="modal-content">
+      <h2>Welcome to <span class="gradient-text">StreamSwap</span></h2>
+      <p class="subtitle">Embed, view, and swap two web pages seamlessly.</p>
+      
+      <div class="modal-form">
+        <div class="modal-input-field">
+          <label for="modal-url-a">Main Stream URL (Stream A)</label>
+          <input type="text" id="modal-url-a" placeholder="https://..." value="https://www.openstreetmap.org/export/embed.html?bbox=-0.15%2C51.50%2C-0.13%2C51.52&layer=mapnik">
+        </div>
+        <div class="modal-input-field">
+          <label for="modal-url-b">Overlay Stream URL (Stream B)</label>
+          <input type="text" id="modal-url-b" placeholder="https://..." value="https://player.vimeo.com/video/76979871?autoplay=1&loop=1&muted=1&background=1">
+        </div>
+        
+        <div class="modal-buttons">
+          <button id="modal-demo-btn" class="glass-btn">Load Demo URLs</button>
+          <button id="modal-launch-btn" class="glow-btn">Launch Streams</button>
+        </div>
+      </div>
+
+      <div class="help-section">
+        <h3>💡 Pro Tip: Embedding YouTube, Twitch, etc.</h3>
+        <p>Many sites block standard links from running in frames. For best results, use their official <strong>embed URLs</strong>:</p>
+        <ul>
+          <li><strong>YouTube</strong>: Change <code>watch?v=XYZ</code> to <code>embed/XYZ</code></li>
+          <li><strong>Vimeo</strong>: Use <code>player.vimeo.com/video/ID</code></li>
+          <li><strong>Twitch</strong>: Use <code>player.twitch.tv/?channel=NAME&parent=localhost</code></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Minimized / Docked Overlay Widget -->
+  <div id="docked-overlay-widget" class="hidden">
+    <div class="docked-details">
+      <span class="docked-badge">Stream PIP</span>
+      <span class="docked-title">Stream B Minimized</span>
+    </div>
+    <button id="restore-overlay-btn" class="glow-btn-sm" title="Restore Overlay Window">Restore</button>
+  </div>
+
+  <!-- Global Help Modal -->
+  <div id="help-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Iframe Embedding & Customization Help</h2>
+        <button id="close-help-btn" class="close-btn">&times;</button>
+      </div>
+      <div class="help-body">
+        <p>Because of web security settings (called X-Frame-Options), some websites do not allow themselves to be loaded within another site. Here is how to configure popular services:</p>
+        
+        <div class="help-grid">
+          <div class="help-card">
+            <h4>YouTube</h4>
+            <p>Use the format:<br><code>https://www.youtube.com/embed/[VIDEO_ID]</code></p>
+            <p class="example">Example: <code>https://www.youtube.com/embed/jfKfPfyJRdk</code></p>
+          </div>
+          
+          <div class="help-card">
+            <h4>Twitch</h4>
+            <p>Use the player format with your site's domain as a parent parameter:<br><code>https://player.twitch.tv/?channel=[CHANNEL]&parent=[YOUR_DOMAIN]</code></p>
+            <p class="example">Example (local): <code>https://player.twitch.tv/?channel=esl_csgo&parent=localhost</code></p>
+          </div>
+
+          <div class="help-card">
+            <h4>Vimeo</h4>
+            <p>Use the player format:<br><code>https://player.vimeo.com/video/[VIDEO_ID]</code></p>
+          </div>
+
+          <div class="help-card">
+            <h4>Interactive Maps & Widgets</h4>
+            <p>OpenStreetMap, Windy weather maps, standard HTML clocks, and web dashboard widgets load instantly.</p>
+          </div>
+        </div>
+
+        <div class="modal-actions-help">
+          <button id="close-help-confirm-btn" class="glow-btn">Got It</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
