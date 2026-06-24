@@ -552,84 +552,44 @@ function setupEventListeners() {
   setupExtractor();
 }
 
-// Stream Extractor Logic (Bypasses CORS restrictions using manual Page Source ingestion)
+// Stream Extractor Logic (Automated Cloudflare Worker endpoint API & Manual fallback)
 function setupExtractor() {
   const extractorBtn = document.getElementById('extractor-btn');
   const extractorModal = document.getElementById('extractor-modal');
   const closeExtractorBtn = document.getElementById('close-extractor-btn');
-  const extractRunBtn = document.getElementById('extract-run-btn');
+  
+  const extractorUrlInput = document.getElementById('extractor-url-input');
+  const extractUrlBtn = document.getElementById('extract-url-btn');
+  
   const extractorHtmlInput = document.getElementById('extractor-html-input');
+  const extractRunBtn = document.getElementById('extract-run-btn');
+  
   const extractionResults = document.getElementById('extraction-results');
   const streamsList = document.getElementById('streams-list');
 
   if (!extractorBtn || !extractorModal) return;
 
+  // Open modal & prepopulate URL inputs with whatever is in Input A (likely what failed)
   extractorBtn.addEventListener('click', () => {
+    if (urlInputA.value && urlInputA.value !== 'about:blank') {
+      extractorUrlInput.value = urlInputA.value;
+    } else if (urlInputB.value && urlInputB.value !== 'about:blank') {
+      extractorUrlInput.value = urlInputB.value;
+    }
     extractorModal.classList.remove('hidden');
+    extractionResults.classList.add('hidden');
   });
 
   closeExtractorBtn.addEventListener('click', () => {
     extractorModal.classList.add('hidden');
   });
 
-  extractRunBtn.addEventListener('click', () => {
-    const html = extractorHtmlInput.value;
-    if (!html.trim()) {
-      alert("Please paste some HTML source code first.");
-      return;
-    }
-
-    const streams = [];
-    const seen = new Set();
-
-    // 1. Scan iframe src attributes
-    const iframeRegex = /<iframe[^>]+src=["']([^"']+)["']/gi;
-    let match;
-    while ((match = iframeRegex.exec(html)) !== null) {
-      let url = match[1];
-      if (url.startsWith('//')) url = 'https:' + url;
-      // Exclude standard ad network domains or known tracking iframes if necessary
-      if (!seen.has(url) && !url.includes('about:blank')) {
-        seen.add(url);
-        streams.push({ type: 'Iframe Player', url: url });
-      }
-    }
-
-    // 2. Scan video and source tags
-    const videoRegex = /<(?:video|source)[^>]+src=["']([^"']+)["']/gi;
-    while ((match = videoRegex.exec(html)) !== null) {
-      let url = match[1];
-      if (url.startsWith('//')) url = 'https:' + url;
-      if (!seen.has(url)) {
-        seen.add(url);
-        streams.push({ type: 'Video Source', url: url });
-      }
-    }
-
-    // 3. Scan for common streaming patterns anywhere in the string
-    const genericStreamRegex = /https?:\/\/[^\s"'><]+(?:embedstream|weakstream|weakspell|sportsurge|vshare|stream|player|play|live)[^\s"'><]*/gi;
-    while ((match = genericStreamRegex.exec(html)) !== null) {
-      const url = match[0];
-      if (!seen.has(url) && !url.includes('google') && !url.includes('facebook') && !url.includes('twitter')) {
-        seen.add(url);
-        streams.push({ type: 'Possible Player Link', url: url });
-      }
-    }
-
-    // 4. Scan for direct m3u8 media files
-    const m3u8Regex = /https?:\/\/[^\s"'><]+\.m3u8[^\s"'><]*/gi;
-    while ((match = m3u8Regex.exec(html)) !== null) {
-      const url = match[0];
-      if (!seen.has(url)) {
-        seen.add(url);
-        streams.push({ type: 'M3U8 Playlist', url: url });
-      }
-    }
-
-    // Render Detected Streams List
+  // Helper to render extracted stream buttons in UI
+  function renderStreams(streams) {
     streamsList.innerHTML = '';
-    if (streams.length === 0) {
-      streamsList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px; text-align: center;">No video streams or player iframes detected. Make sure to paste the full page source code (Ctrl+U).</div>';
+    
+    if (!streams || streams.length === 0) {
+      streamsList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px; text-align: center;">No video streams or player iframes detected. Make sure to paste the full code or verify the site domain.</div>';
     } else {
       streams.forEach((stream, index) => {
         const item = document.createElement('div');
@@ -652,7 +612,7 @@ function setupExtractor() {
           </div>
         `;
 
-        // Wire buttons
+        // Load buttons wireup
         item.querySelector('.btn-load-main').addEventListener('click', () => {
           loadUrls(stream.url, urlInputB.value);
           extractorModal.classList.add('hidden');
@@ -668,6 +628,106 @@ function setupExtractor() {
     }
 
     extractionResults.classList.remove('hidden');
+  }
+
+  // --- METHOD 1: AUTOMATED CLOUDFLARE WORKER PROXY SCAN ---
+  extractUrlBtn.addEventListener('click', async () => {
+    const targetUrl = extractorUrlInput.value.trim();
+    if (!targetUrl) {
+      alert("Please enter a URL to scan.");
+      return;
+    }
+
+    // Disable button state
+    extractUrlBtn.disabled = true;
+    const originalText = extractUrlBtn.textContent;
+    extractUrlBtn.textContent = "Scanning...";
+    streamsList.innerHTML = '<div style="color: var(--accent-light); font-size: 0.85rem; padding: 10px; text-align: center;">Connecting to Cloudflare edge parser and scraping streams... Please wait...</div>';
+    extractionResults.classList.remove('hidden');
+
+    try {
+      // Direct call to our Cloudflare Pages API endpoint
+      const response = await fetch(`/api/scrape?url=${encodeURIComponent(targetUrl)}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP Error ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      renderStreams(data.streams);
+    } catch (err) {
+      console.error(err);
+      streamsList.innerHTML = `
+        <div style="color: #f43f5e; font-size: 0.85rem; padding: 10px; text-align: center; border: 1px dashed rgba(244, 63, 94, 0.3); border-radius: var(--radius-md); background: rgba(244, 63, 94, 0.05);">
+          <strong>Automatic Scan Failed:</strong> ${err.message}<br><br>
+          <span style="font-size: 0.75rem; color: var(--text-muted);">This is likely due to Cloudflare DDoS protection or anti-bot guards blocking server-side scraping. Please use the <strong>Manual Fallback</strong> below by pasting the page source!</span>
+        </div>
+      `;
+    } finally {
+      extractUrlBtn.disabled = false;
+      extractUrlBtn.textContent = originalText;
+    }
+  });
+
+  // --- METHOD 2: MANUAL SOURCE CODE COPY-PASTE PARSER ---
+  extractRunBtn.addEventListener('click', () => {
+    const html = extractorHtmlInput.value;
+    if (!html.trim()) {
+      alert("Please paste some HTML source code first.");
+      return;
+    }
+
+    const streams = [];
+    const seen = new Set();
+
+    // 1. Scan iframe src attributes
+    const iframeRegex = /<iframe[^>]+src=["']([^"']+)["']/gi;
+    let match;
+    while ((match = iframeRegex.exec(html)) !== null) {
+      let url = match[1];
+      if (url.startsWith('//')) url = 'https:' + url;
+      if (!seen.has(url) && !url.includes('about:blank')) {
+        seen.add(url);
+        streams.push({ type: 'Iframe Player', url: url });
+      }
+    }
+
+    // 2. Scan video and source tags
+    const videoRegex = /<(?:video|source)[^>]+src=["']([^"']+)["']/gi;
+    while ((match = videoRegex.exec(html)) !== null) {
+      let url = match[1];
+      if (url.startsWith('//')) url = 'https:' + url;
+      if (!seen.has(url)) {
+        seen.add(url);
+        streams.push({ type: 'Video Source', url: url });
+      }
+    }
+
+    // 3. Scan generic stream-like URLs in text
+    const genericStreamRegex = /https?:\/\/[^\s"'><]+(?:embedstream|weakstream|weakspell|sportsurge|vshare|stream|player|play|live)[^\s"'><]*/gi;
+    while ((match = genericStreamRegex.exec(html)) !== null) {
+      const url = match[0];
+      if (!seen.has(url) && !url.includes('google') && !url.includes('facebook') && !url.includes('twitter')) {
+        seen.add(url);
+        streams.push({ type: 'Possible Player Link', url: url });
+      }
+    }
+
+    // 4. Scan for direct m3u8 playlists
+    const m3u8Regex = /https?:\/\/[^\s"'><]+\.m3u8[^\s"'><]*/gi;
+    while ((match = m3u8Regex.exec(html)) !== null) {
+      const url = match[0];
+      if (!seen.has(url)) {
+        seen.add(url);
+        streams.push({ type: 'M3U8 Playlist', url: url });
+      }
+    }
+
+    renderStreams(streams);
   });
 }
 
