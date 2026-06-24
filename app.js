@@ -257,6 +257,14 @@ function loadUrls(urlA, urlB) {
   urlInputA.value = state.urlA;
   urlInputB.value = state.urlB;
 
+  // Save raw input URLs to localStorage to remember them across page reloads
+  if (urlA && urlA !== 'about:blank') {
+    localStorage.setItem('streamswap_url_a', urlA);
+  }
+  if (urlB && urlB !== 'about:blank') {
+    localStorage.setItem('streamswap_url_b', urlB);
+  }
+
   // Initial role configuration (A is main, B is overlay)
   setRoles(state.wrapperA, state.wrapperB);
 }
@@ -782,7 +790,21 @@ window.addEventListener('DOMContentLoaded', () => {
   initOverlayCoordinates();
   setupEventListeners();
   
-  // Leave URL fields blank by default on load
-  urlInputA.value = '';
-  urlInputB.value = '';
+  // Check if there are last saved URLs to restore from localStorage
+  const savedA = localStorage.getItem('streamswap_url_a');
+  const savedB = localStorage.getItem('streamswap_url_b');
+  
+  if (savedA && savedB) {
+    urlInputA.value = savedA;
+    urlInputB.value = savedB;
+    loadUrls(savedA, savedB);
+    
+    // Auto-hide onboarding modal since we are resuming previous streams
+    const welcomeModal = document.getElementById('welcome-modal');
+    if (welcomeModal) welcomeModal.classList.add('hidden');
+  } else {
+    // Leave URL fields blank by default on load if no session exists
+    urlInputA.value = '';
+    urlInputB.value = '';
+  }
 });
