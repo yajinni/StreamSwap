@@ -95,6 +95,40 @@ export async function onRequestGet(context) {
       }
     }
 
+    // 5. Scan for dynamic stream variables (e.g. StreamEast/obfuscated stream patterns)
+    const streamIdCandidates = new Set();
+    const idVarRegex = /(?:window\.)?streamId\s*=\s*["']?(\d+)["']?/g;
+    let m;
+    while ((m = idVarRegex.exec(html)) !== null) {
+      streamIdCandidates.add(m[1]);
+    }
+    const changeStrRegex = /changeStream\(\s*["']?(\d+)["']?\s*\)/g;
+    while ((m = changeStrRegex.exec(html)) !== null) {
+      streamIdCandidates.add(m[1]);
+    }
+    const btnIdRegex = /id=["']stream-btn-(\d+)["']/g;
+    while ((m = btnIdRegex.exec(html)) !== null) {
+      streamIdCandidates.add(m[1]);
+    }
+    
+    const concatRegex = /['"](https?:\/\/[^'"]+?(?:embed|player|stream|play|view)[^'"]*?\/)['"]\s*\+\s*streamId(?:\s*\+\s*['"]([^'"]*)['"])?/gi;
+    const concatMatches = [];
+    while ((m = concatRegex.exec(html)) !== null) {
+      concatMatches.push({ base: m[1], suffix: m[2] || '' });
+    }
+
+    if (streamIdCandidates.size > 0 && concatMatches.length > 0) {
+      streamIdCandidates.forEach(function(id) {
+        concatMatches.forEach(function(cMatch) {
+          const fullUrl = cMatch.base + id + cMatch.suffix;
+          if (!seen.has(fullUrl)) {
+            seen.add(fullUrl);
+            streams.push({ type: 'Dynamic Stream', url: fullUrl });
+          }
+        });
+      });
+    }
+
     return new Response(JSON.stringify({ streams }), {
       headers: {
         'Content-Type': 'application/json',
