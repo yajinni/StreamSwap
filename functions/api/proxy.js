@@ -57,12 +57,63 @@ export async function onRequestGet(context) {
       html = baseTag + html;
     }
 
+    // Rewrite static iframes to use the proxy
+    html = html.replace(/<iframe([^>]+)src=["'](https?:\/\/[^"']+)["']/gi, (match, attrs, src) => {
+      if (src.includes('/api/proxy') || src.includes('youtube.com') || src.includes('twitch.tv') || src.includes('vimeo.com')) {
+        return match;
+      }
+      return `<iframe${attrs}src="/api/proxy?url=${encodeURIComponent(src)}"`;
+    });
+
     // 2. Inject Client-side Interceptor and Sniffer Script
     const snifferScript = `
 <script>
   (function() {
     // Inject custom stylesheet to highlight detected items if needed
     console.log("[StreamSwap Sniffer] Initialized on " + window.location.href);
+
+    // Intercept iframe creations and source changes to load them through proxy
+    try {
+      const originalSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'src');
+      if (originalSrcDescriptor) {
+        Object.defineProperty(HTMLIFrameElement.prototype, 'src', {
+          get: function() {
+            const val = originalSrcDescriptor.get.call(this);
+            if (val && val.includes('/api/proxy?url=')) {
+              try {
+                const u = new URL(val, window.location.origin);
+                return decodeURIComponent(u.searchParams.get('url'));
+              } catch(e) {}
+            }
+            return val;
+          },
+          set: function(val) {
+            if (val && typeof val === 'string' && !val.startsWith('/') && !val.startsWith('about:') && !val.includes('/api/proxy')) {
+              try {
+                const absoluteUrl = new URL(val, window.location.href).href;
+                val = '/api/proxy?url=' + encodeURIComponent(absoluteUrl);
+              } catch(e) {}
+            }
+            originalSrcDescriptor.set.call(this, val);
+          }
+        });
+      }
+
+      const originalSetAttribute = Element.prototype.setAttribute;
+      Element.prototype.setAttribute = function(name, value) {
+        if (name && name.toLowerCase() === 'src' && this.tagName && this.tagName.toLowerCase() === 'iframe') {
+          if (value && typeof value === 'string' && !value.startsWith('/') && !value.startsWith('about:') && !value.includes('/api/proxy')) {
+            try {
+              const absoluteUrl = new URL(value, window.location.href).href;
+              value = '/api/proxy?url=' + encodeURIComponent(absoluteUrl);
+            } catch(e) {}
+          }
+        }
+        originalSetAttribute.call(this, name, value);
+      };
+    } catch (err) {
+      console.warn("Failed to set iframe interception:", err);
+    }
 
     // Intercept Link clicks and rewrite to go through the proxy
     document.addEventListener('click', function(e) {
