@@ -547,6 +547,128 @@ function setupEventListeners() {
   closeHelpConfirmBtn.addEventListener('click', () => {
     helpModal.classList.add('hidden');
   });
+
+  // Load Stream Extractor Bindings
+  setupExtractor();
+}
+
+// Stream Extractor Logic (Bypasses CORS restrictions using manual Page Source ingestion)
+function setupExtractor() {
+  const extractorBtn = document.getElementById('extractor-btn');
+  const extractorModal = document.getElementById('extractor-modal');
+  const closeExtractorBtn = document.getElementById('close-extractor-btn');
+  const extractRunBtn = document.getElementById('extract-run-btn');
+  const extractorHtmlInput = document.getElementById('extractor-html-input');
+  const extractionResults = document.getElementById('extraction-results');
+  const streamsList = document.getElementById('streams-list');
+
+  if (!extractorBtn || !extractorModal) return;
+
+  extractorBtn.addEventListener('click', () => {
+    extractorModal.classList.remove('hidden');
+  });
+
+  closeExtractorBtn.addEventListener('click', () => {
+    extractorModal.classList.add('hidden');
+  });
+
+  extractRunBtn.addEventListener('click', () => {
+    const html = extractorHtmlInput.value;
+    if (!html.trim()) {
+      alert("Please paste some HTML source code first.");
+      return;
+    }
+
+    const streams = [];
+    const seen = new Set();
+
+    // 1. Scan iframe src attributes
+    const iframeRegex = /<iframe[^>]+src=["']([^"']+)["']/gi;
+    let match;
+    while ((match = iframeRegex.exec(html)) !== null) {
+      let url = match[1];
+      if (url.startsWith('//')) url = 'https:' + url;
+      // Exclude standard ad network domains or known tracking iframes if necessary
+      if (!seen.has(url) && !url.includes('about:blank')) {
+        seen.add(url);
+        streams.push({ type: 'Iframe Player', url: url });
+      }
+    }
+
+    // 2. Scan video and source tags
+    const videoRegex = /<(?:video|source)[^>]+src=["']([^"']+)["']/gi;
+    while ((match = videoRegex.exec(html)) !== null) {
+      let url = match[1];
+      if (url.startsWith('//')) url = 'https:' + url;
+      if (!seen.has(url)) {
+        seen.add(url);
+        streams.push({ type: 'Video Source', url: url });
+      }
+    }
+
+    // 3. Scan for common streaming patterns anywhere in the string
+    const genericStreamRegex = /https?:\/\/[^\s"'><]+(?:embedstream|weakstream|weakspell|sportsurge|vshare|stream|player|play|live)[^\s"'><]*/gi;
+    while ((match = genericStreamRegex.exec(html)) !== null) {
+      const url = match[0];
+      if (!seen.has(url) && !url.includes('google') && !url.includes('facebook') && !url.includes('twitter')) {
+        seen.add(url);
+        streams.push({ type: 'Possible Player Link', url: url });
+      }
+    }
+
+    // 4. Scan for direct m3u8 media files
+    const m3u8Regex = /https?:\/\/[^\s"'><]+\.m3u8[^\s"'><]*/gi;
+    while ((match = m3u8Regex.exec(html)) !== null) {
+      const url = match[0];
+      if (!seen.has(url)) {
+        seen.add(url);
+        streams.push({ type: 'M3U8 Playlist', url: url });
+      }
+    }
+
+    // Render Detected Streams List
+    streamsList.innerHTML = '';
+    if (streams.length === 0) {
+      streamsList.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px; text-align: center;">No video streams or player iframes detected. Make sure to paste the full page source code (Ctrl+U).</div>';
+    } else {
+      streams.forEach((stream, index) => {
+        const item = document.createElement('div');
+        item.className = 'stream-item';
+        
+        let label = stream.type;
+        try {
+          const parsed = new URL(stream.url);
+          label = `${stream.type} (${parsed.hostname})`;
+        } catch(e) {}
+
+        item.innerHTML = `
+          <div class="stream-item-info">
+            <span class="stream-item-title">#${index + 1} - ${label}</span>
+            <span class="stream-item-url" title="${stream.url}">${stream.url}</span>
+          </div>
+          <div class="stream-item-actions">
+            <button class="glow-btn-sm btn-load-main" style="background: #6366f1;">Set Main</button>
+            <button class="glow-btn-sm btn-load-overlay" style="background: #a855f7;">Set PIP</button>
+          </div>
+        `;
+
+        // Wire buttons
+        item.querySelector('.btn-load-main').addEventListener('click', () => {
+          loadUrls(stream.url, urlInputB.value);
+          extractorModal.classList.add('hidden');
+        });
+
+        item.querySelector('.btn-load-overlay').addEventListener('click', () => {
+          loadUrls(urlInputA.value, stream.url);
+          extractorModal.classList.add('hidden');
+        });
+
+        streamsList.appendChild(item);
+      });
+    }
+
+    extractionResults.classList.remove('hidden');
+  });
 }
 
 // Window load trigger
@@ -558,3 +680,4 @@ window.addEventListener('DOMContentLoaded', () => {
   urlInputA.value = modalUrlA.value;
   urlInputB.value = modalUrlB.value;
 });
+

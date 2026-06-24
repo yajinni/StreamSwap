@@ -746,3 +746,58 @@ body {
   display: inline-block;
   vertical-align: middle;
 }
+
+/* Stream Extractor Styles */
+#streams-list {
+  scrollbar-width: thin;
+}
+
+.stream-item {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.stream-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-glass-focus);
+}
+
+.stream-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  flex-grow: 1;
+  text-align: left;
+}
+
+.stream-item-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stream-item-url {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stream-item-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+

@@ -114,7 +114,11 @@
         </div>
         <button id="load-btn" class="glow-btn">Load Streams</button>
       </div>
-      <div class="control-actions">
+      <div class="control-actions" style="display: flex; gap: 8px;">
+        <button id="extractor-btn" class="glass-btn text-icon" title="Extract Streams from Page Source">
+          <svg class="icon" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+          <span>Extract Streams</span>
+        </button>
         <button id="info-btn" class="glass-btn text-icon" title="Iframe Embed Help">
           <svg class="icon" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
           <span>Help</span>
@@ -206,6 +210,35 @@
 
         <div class="modal-actions-help">
           <button id="close-help-confirm-btn" class="glow-btn">Got It</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stream Extractor Modal -->
+  <div id="extractor-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Stream Extractor (CORS Helper)</h2>
+        <button id="close-extractor-btn" class="close-btn">&times;</button>
+      </div>
+      <div class="help-body">
+        <p class="subtitle" style="text-align: left; margin-bottom: 12px;">Paste the page's HTML source code below. We will scan it to extract stream player URLs for you to load instantly.</p>
+        
+        <div class="modal-form">
+          <div class="modal-input-field">
+            <label for="extractor-html-input">Paste HTML Source Code</label>
+            <textarea id="extractor-html-input" rows="8" placeholder="Press Ctrl+U (or right-click -> View Page Source) on the streaming site, copy everything, and paste it here..." style="background: rgba(0, 0, 0, 0.4); border: 1px solid var(--border-glass); border-radius: var(--radius-md); padding: 12px 16px; color: var(--text-main); font-family: monospace; font-size: 0.8rem; outline: none; resize: vertical; width: 100%; height: 160px;"></textarea>
+          </div>
+          
+          <button id="extract-run-btn" class="glow-btn">Scan and Extract Streams</button>
+        </div>
+
+        <div id="extraction-results" class="hidden" style="margin-top: 15px;">
+          <h3 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 10px; color: var(--accent-light);">Detected Video Players / Streams:</h3>
+          <div id="streams-list" style="max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
+            <!-- Extracted list items will be injected here -->
+          </div>
         </div>
       </div>
     </div>
