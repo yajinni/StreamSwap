@@ -11,8 +11,19 @@ export async function onRequestGet(context) {
     url = 'https://' + url;
   }
 
+  let refererHeader = searchParams.get('referer');
+  if (!refererHeader && url) {
+    try {
+      const nestedUrl = new URL(url);
+      refererHeader = nestedUrl.searchParams.get('referer');
+    } catch(e) {}
+  }
+
   try {
     const parsedUrl = new URL(url);
+    if (!refererHeader) {
+      refererHeader = parsedUrl.origin;
+    }
 
     // Fetch target webpage on the server side
     const response = await fetch(url, {
@@ -20,7 +31,7 @@ export async function onRequestGet(context) {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.5',
-        'Referer': parsedUrl.origin
+        'Referer': refererHeader
       },
       redirect: 'follow'
     });
@@ -62,7 +73,7 @@ export async function onRequestGet(context) {
       if (src.includes('/api/proxy') || src.includes('youtube.com') || src.includes('twitch.tv') || src.includes('vimeo.com')) {
         return match;
       }
-      return `<iframe${attrs}src="/api/proxy?url=${encodeURIComponent(src)}"`;
+      return `<iframe${attrs}src="/api/proxy?url=${encodeURIComponent(src)}&referer=${encodeURIComponent(parsedUrl.origin)}"`;
     });
 
     // 2. Inject Client-side Interceptor and Sniffer Script
@@ -84,7 +95,7 @@ export async function onRequestGet(context) {
           const baseUrl = targetUrlStr ? new URL(targetUrlStr) : new URL(window.location.href);
           
           const absoluteUrl = new URL(val, baseUrl.href).href;
-          return '/api/proxy?url=' + encodeURIComponent(absoluteUrl);
+          return '/api/proxy?url=' + encodeURIComponent(absoluteUrl) + '&referer=' + encodeURIComponent(baseUrl.origin);
         } catch(e) {
           return val;
         }
@@ -163,6 +174,19 @@ export async function onRequestGet(context) {
     function scanPageForStreams() {
       const streams = [];
       const seen = new Set();
+      let refererOrigin = '';
+      try {
+        const queryParams = new URLSearchParams(window.location.search);
+        const targetUrlStr = queryParams.get('url');
+        if (targetUrlStr) {
+          refererOrigin = new URL(targetUrlStr).origin;
+        }
+      } catch(e) {}
+
+      function appendReferer(urlStr) {
+        if (!refererOrigin || !urlStr) return urlStr;
+        return urlStr + (urlStr.includes('?') ? '&' : '?') + 'referer=' + encodeURIComponent(refererOrigin);
+      }
 
       // 1. Scan iframes
       document.querySelectorAll('iframe').forEach(function(iframe) {
@@ -172,7 +196,7 @@ export async function onRequestGet(context) {
             const absoluteSrc = new URL(src, window.location.href).href;
             if (!seen.has(absoluteSrc)) {
               seen.add(absoluteSrc);
-              streams.push({ type: 'Iframe Player', url: absoluteSrc });
+              streams.push({ type: 'Iframe Player', url: appendReferer(absoluteSrc) });
             }
           } catch(e) {}
         }
@@ -186,7 +210,7 @@ export async function onRequestGet(context) {
             const absoluteSrc = new URL(src, window.location.href).href;
             if (!seen.has(absoluteSrc)) {
               seen.add(absoluteSrc);
-              streams.push({ type: 'Video Source', url: absoluteSrc });
+              streams.push({ type: 'Video Source', url: appendReferer(absoluteSrc) });
             }
           } catch(e) {}
         }
@@ -200,7 +224,7 @@ export async function onRequestGet(context) {
         const url = match[0];
         if (!seen.has(url) && !url.includes('google') && !url.includes('facebook') && !url.includes('twitter') && !url.includes('analytics')) {
           seen.add(url);
-          streams.push({ type: 'Possible Player Link', url: url });
+          streams.push({ type: 'Possible Player Link', url: appendReferer(url) });
         }
       }
 
@@ -210,7 +234,7 @@ export async function onRequestGet(context) {
         const url = match[0];
         if (!seen.has(url)) {
           seen.add(url);
-          streams.push({ type: 'M3U8 Playlist', url: url });
+          streams.push({ type: 'M3U8 Playlist', url: appendReferer(url) });
         }
       }
 
@@ -230,7 +254,7 @@ export async function onRequestGet(context) {
         streamIdCandidates.add(m[1]);
       }
       
-      const concatRegex = /['"](https?:\/\/[^'"]+?(?:embed|player|stream|play|view)[^'"]*?\/)['"]\s*\+\s*streamId(?:\s*\+\s*['"]([^'"]*)['"])?/gi;
+      const concatRegex = /['"](https?:\/\/[^\s"'><\(\)]+?(?:embed|player|stream|play|view)[^\s"'><\(\)]*?\/)['"]\s*\+\s*streamId(?:\s*\+\s*['"]([^'"]*)['"])?/gi;
       const concatMatches = [];
       while ((m = concatRegex.exec(bodyHtml)) !== null) {
         concatMatches.push({ base: m[1], suffix: m[2] || '' });
@@ -242,7 +266,7 @@ export async function onRequestGet(context) {
             const fullUrl = cMatch.base + id + cMatch.suffix;
             if (!seen.has(fullUrl)) {
               seen.add(fullUrl);
-              streams.push({ type: 'Dynamic Stream', url: fullUrl });
+              streams.push({ type: 'Dynamic Stream', url: appendReferer(fullUrl) });
             }
           });
         });
