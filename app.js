@@ -102,9 +102,9 @@ const detectorResults = document.getElementById('detector-results');
 const detectorStreamsList = document.getElementById('detector-streams-list');
 const closeDetectorBtn = document.getElementById('close-detector-btn');
 
-// Setup default overlay position on load
+// Setup default overlay position on load (positioned offset from edges to clear scrollbars)
 function initOverlayCoordinates() {
-  const gap = 30;
+  const gap = 55; // increased from 30px to clear scrollbars and system widgets
   state.overlayConfig.x = window.innerWidth - state.overlayConfig.width - gap;
   state.overlayConfig.y = window.innerHeight - state.overlayConfig.height - gap;
 }
@@ -715,10 +715,18 @@ function setupEventListeners() {
 
   // Connect individual wrapper action chrome buttons
   [state.wrapperA, state.wrapperB].forEach(wrapper => {
+    const homeBtn = wrapper.querySelector('.btn-home');
     const dragBar = wrapper.querySelector('.drag-handle');
     const swapBtn = wrapper.querySelector('.btn-swap');
     const interactBtn = wrapper.querySelector('.btn-interact');
     const minBtn = wrapper.querySelector('.btn-minimize');
+
+    if (homeBtn) {
+      homeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        resetSetupWizard();
+      });
+    }
 
     dragBar.addEventListener('mousedown', (e) => startDrag(e));
     dragBar.addEventListener('touchstart', (e) => startDrag(e));
